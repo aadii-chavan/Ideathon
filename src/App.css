@@ -1,0 +1,13 @@
+#root {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+/* IDE refinements */
+.editor-surface {
+  background: radial-gradient(1200px 600px at 20% -10%, rgba(124,58,237,0.08), transparent),
+              radial-gradient(1200px 600px at 120% -10%, rgba(59,130,246,0.06), transparent);
+}
