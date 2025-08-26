@@ -80,6 +80,7 @@ export default function WebContainerRunner(props: Props) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const shellRef = useRef<any | null>(null);
   const projectCwdRef = useRef<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
   const logToTerminal = useCallback((chunk: string) => {
     terminalRef.current?.write(chunk.replaceAll('\n', '\r\n'));
@@ -201,7 +202,34 @@ export default function WebContainerRunner(props: Props) {
   return (
     <div className={props.className}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-        <input ref={fileRef} type="file" accept=".zip" />
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".zip"
+          onChange={(e) => {
+            const f = e.currentTarget.files && e.currentTarget.files[0];
+            setSelectedFileName(f ? f.name : null);
+          }}
+          style={{ display: 'none' }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          style={{
+            fontSize: 13,
+            padding: '8px 12px',
+            borderRadius: 10,
+            border: '1px solid hsl(var(--border))',
+            background: 'linear-gradient(90deg, rgba(124,58,237,0.18), rgba(59,130,246,0.18))',
+            color: 'hsl(var(--foreground))',
+            boxShadow: '0 1px 0 rgba(0,0,0,0.25) inset, 0 0 0 1px rgba(124,58,237,0.12) inset',
+          }}
+        >
+          Choose ZIP
+        </button>
+        <span style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
+          {selectedFileName ?? 'No file chosen'}
+        </span>
         <button onClick={handleUpload}>Mount ZIP</button>
         <button onClick={handleInstall} disabled={isInstalling}>Install</button>
         <button onClick={handleRun} disabled={isRunning}>Run Dev</button>
@@ -219,9 +247,9 @@ export default function WebContainerRunner(props: Props) {
           }
         }}>Open Shell</button>
       </div>
-      <div id="webcontainer-terminal" style={{ position: 'relative', width: '100%', border: '1px solid var(--border, #333)', borderRadius: 6, background: '#0b0b0b', marginBottom: 8, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: '#111', borderBottom: '1px solid var(--border, #333)' }}>
-          <span style={{ fontSize: 12, color: '#bbb' }}>Terminal</span>
+      <div id="webcontainer-terminal" style={{ position: 'relative', width: '100%', border: '1px solid hsl(var(--border))', borderRadius: 12, background: 'hsl(var(--card))', marginBottom: 8, overflow: 'hidden', boxShadow: '0 1px 0 rgba(124, 58, 237, 0.12) inset, 0 0 0 1px rgba(124, 58, 237, 0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'linear-gradient(180deg, rgba(124,58,237,0.08), rgba(59,130,246,0.06))', borderBottom: '1px solid hsl(var(--border))' }}>
+          <span style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>Terminal</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setIsCollapsed((c) => !c)} style={{ fontSize: 12 }}> {isCollapsed ? 'Expand' : 'Collapse'} </button>
           </div>
@@ -236,7 +264,7 @@ export default function WebContainerRunner(props: Props) {
             bottom: 0,
             height: 8,
             cursor: 'ns-resize',
-            background: 'linear-gradient(to bottom, rgba(255,255,255,0.04), rgba(255,255,255,0.08))'
+            background: 'linear-gradient(to bottom, rgba(124,58,237,0.15), rgba(59,130,246,0.2))'
           }}
         />
       </div>

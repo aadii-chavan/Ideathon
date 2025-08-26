@@ -23,10 +23,37 @@ const Terminal = forwardRef<TerminalHandle, Props>(function Terminal(props, ref)
 	const [isReady, setIsReady] = useState(false);
 
 	useEffect(() => {
+		const css = getComputedStyle(document.documentElement);
+		const h = (name: string) => `hsl(${css.getPropertyValue(name).trim()})`;
+
 		const term = new XTerm({
 			convertEol: true,
 			cursorBlink: true,
-			theme: { background: '#000000' },
+			cursorStyle: 'bar',
+			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+			fontSize: 12,
+			theme: {
+				background: h('--card'),
+				foreground: h('--foreground'),
+				selection: 'rgba(124, 58, 237, 0.35)',
+				cursor: h('--accent'),
+				black: '#1F2937',
+				red: h('--destructive'),
+				green: h('--success'),
+				yellow: h('--warning'),
+				blue: h('--secondary'),
+				magenta: h('--accent'),
+				cyan: '#22D3EE',
+				white: '#E5E7EB',
+				brightBlack: '#6B7280',
+				brightRed: '#EF4444',
+				brightGreen: '#22C55E',
+				brightYellow: '#F59E0B',
+				brightBlue: '#3B82F6',
+				brightMagenta: '#A855F7',
+				brightCyan: '#06B6D4',
+				brightWhite: '#F9FAFB',
+			},
 			...props.options,
 		});
 		const fitAddon = new FitAddon();
