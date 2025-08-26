@@ -110,24 +110,28 @@ export default function WebContainerRunner(props: Props) {
         terminalRef.current?.onData((data) => manager.writeToProcess(shellRef.current!, data));
         logToTerminal('Interactive shell opened.\r\n');
       }
+      setIsCollapsed(false);
       const el = document.getElementById('webcontainer-terminal');
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
       // Focus the terminal for immediate typing
       setTimeout(() => terminalRef.current?.fit(), 50);
     });
     const offToggle = terminalBus.on('toggle-terminal', async () => {
-      if (isCollapsed) {
-        setIsCollapsed(false);
+      let nextCollapsed: boolean | null = null;
+      setIsCollapsed((prev) => {
+        nextCollapsed = !prev;
+        return nextCollapsed!;
+      });
+      // If we are expanding (nextCollapsed === false), make sure terminal is ready and sized
+      if (nextCollapsed === false) {
+        if (!shellRef.current) {
+          shellRef.current = await manager.openShell((chunk) => {
+            logToTerminal(chunk.split('\n').join('\r\n'));
+          });
+          terminalRef.current?.onData((data) => manager.writeToProcess(shellRef.current!, data));
+          logToTerminal('Interactive shell opened.\r\n');
+        }
         setTimeout(() => terminalRef.current?.fit(), 100);
-      } else {
-        setIsCollapsed(true);
-      }
-      // Also ensure shell exists when expanding
-      if (!isCollapsed && !shellRef.current) {
-        shellRef.current = await manager.openShell((chunk) => {
-          logToTerminal(chunk.split('\n').join('\r\n'));
-        });
-        terminalRef.current?.onData((data) => manager.writeToProcess(shellRef.current!, data));
       }
     });
     return () => {
@@ -210,10 +214,6 @@ export default function WebContainerRunner(props: Props) {
       onServerReady: (_port, url) => {
         setAppUrl(url);
         logToTerminal(`Server ready at ${url}\r\n`);
-        try {
-          const previewUrl = `/preview?url=${encodeURIComponent(url)}`;
-          window.open(previewUrl, '_blank');
-        } catch {}
       },
       cwd: projectCwdRef.current ?? undefined,
     });
@@ -267,32 +267,33 @@ export default function WebContainerRunner(props: Props) {
           }
         }}>Open Shell</button>
       </div>
-      <div id="webcontainer-terminal" style={{ position: 'relative', width: '100%', border: '1px solid hsl(var(--border))', borderRadius: 12, background: 'hsl(var(--card))', marginBottom: 8, overflow: 'hidden', boxShadow: '0 1px 0 rgba(124, 58, 237, 0.12) inset, 0 0 0 1px rgba(124, 58, 237, 0.06)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'linear-gradient(180deg, rgba(124,58,237,0.08), rgba(59,130,246,0.06))', borderBottom: '1px solid hsl(var(--border))' }}>
-          <span style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>Terminal</span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setIsCollapsed((c) => !c)} style={{ fontSize: 12 }}> {isCollapsed ? 'Expand' : 'Collapse'} </button>
+      {!isCollapsed && (
+        <div id="webcontainer-terminal" style={{ position: 'relative', width: '100%', border: '1px solid hsl(var(--border))', borderRadius: 12, background: 'hsl(var(--card))', marginBottom: 8, overflow: 'hidden', boxShadow: '0 1px 0 rgba(124, 58, 237, 0.12) inset, 0 0 0 1px rgba(124, 58, 237, 0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'linear-gradient(180deg, rgba(124,58,237,0.08), rgba(59,130,246,0.06))', borderBottom: '1px solid hsl(var(--border))' }}>
+            <span style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>Terminal</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setIsCollapsed(true)} style={{ fontSize: 12 }}>Collapse</button>
+            </div>
           </div>
+          <Terminal ref={terminalRef} heightPx={termHeight} />
+          <div
+            onMouseDown={() => setIsResizing(true)}
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 8,
+              cursor: 'ns-resize',
+              background: 'linear-gradient(to bottom, rgba(124,58,237,0.15), rgba(59,130,246,0.2))'
+            }}
+          />
         </div>
-        {!isCollapsed && <Terminal ref={terminalRef} heightPx={termHeight} />}
-        <div
-          onMouseDown={() => setIsResizing(true)}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 8,
-            cursor: 'ns-resize',
-            background: 'linear-gradient(to bottom, rgba(124,58,237,0.15), rgba(59,130,246,0.2))'
-          }}
-        />
-      </div>
-      {isResizing && (
+      )}
+      {isResizing && !isCollapsed && (
         <div
           onMouseMove={(e) => {
             const container = (e.currentTarget as HTMLDivElement).previousElementSibling as HTMLDivElement | null;
-            // Use window coordinates to compute height
             const rect = container?.getBoundingClientRect();
             if (rect) {
               const newHeight = Math.max(160, Math.min(800, e.clientY - rect.top));
@@ -307,8 +308,9 @@ export default function WebContainerRunner(props: Props) {
         />
       )}
       <div style={{ marginTop: 8 }}>
-        {appUrl && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+        {appUrl ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>Dev server ready.</span>
             <button
               onClick={() => {
                 try {
@@ -318,18 +320,11 @@ export default function WebContainerRunner(props: Props) {
               }}
               style={{ fontSize: 12 }}
             >
-              Open Preview in New Window
+              Open Preview
             </button>
           </div>
-        )}
-        {appUrl ? (
-          <iframe
-            src={appUrl}
-            title="App Preview"
-            style={{ width: '100%', height: 480, border: '1px solid #ccc', ...(props.iframeStyle || {}) }}
-          />
         ) : (
-          <div style={{ color: '#666' }}>App preview will appear here when the server is ready.</div>
+          <div style={{ color: '#666' }}>Run the dev server to enable preview.</div>
         )}
       </div>
     </div>
