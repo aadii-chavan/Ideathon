@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useMemo, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import JSZip from 'jszip';
 import { useToast } from '@/hooks/use-toast';
+import { WebContainerManager } from '@/lib/webcontainerManager';
 
 export type FileNode = {
   name: string;
@@ -83,13 +84,37 @@ export function FileSystemProvider({ children }: { children: ReactNode }) {
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [cache, setCache] = useState<Map<string, LoadedContent>>(new Map());
   const [dirty, setDirty] = useState<Set<string>>(new Set());
+  const managerRef = useRef<WebContainerManager | null>(null);
+
+  useEffect(() => {
+    managerRef.current = WebContainerManager.getInstance();
+  }, []);
 
   const loadZip = useCallback(async (file: File) => {
     try {
       const nextZip = await JSZip.loadAsync(file);
       setZip(nextZip);
-      const filePaths = Object.keys(nextZip.files).filter((p) => !nextZip.files[p].dir);
-      const tree = buildTree(filePaths);
+      // Mount into WebContainer and then build tree from container for single source of truth
+      const treeForMount: any = {};
+      await Promise.all(
+        Object.entries(nextZip.files).map(async ([p, entry]) => {
+          if (entry.dir) return;
+          const parts = p.split('/');
+          const fileName = parts.pop() as string;
+          let current: any = treeForMount;
+          for (const part of parts) {
+            if (!part) continue;
+            if (!current[part]) current[part] = { directory: {} };
+            current = current[part].directory;
+          }
+          const content = await entry.async('uint8array');
+          current[fileName] = { file: { contents: content } };
+        })
+      );
+      const manager = managerRef.current!;
+      await manager.mountFiles(treeForMount);
+      const allPaths = await manager.listTreeAsPaths('/');
+      const tree = buildTree(allPaths);
       setRoot(tree);
       setOpenFiles([]);
       setActiveFilePath(null);
@@ -98,7 +123,7 @@ export function FileSystemProvider({ children }: { children: ReactNode }) {
       
       toast({
         title: "Project Loaded Successfully",
-        description: `${file.name} - ${filePaths.length} files extracted`,
+        description: `${file.name} - ${allPaths.length} files extracted`,
         duration: 3000,
       });
     } catch (error) {
@@ -114,18 +139,17 @@ export function FileSystemProvider({ children }: { children: ReactNode }) {
   }, [toast]);
 
   const openFile = useCallback(async (path: string) => {
-    if (!zip) return;
     if (!openFiles.includes(path)) {
       setOpenFiles((prev) => [...prev, path]);
     }
     setActiveFilePath(path);
     if (!cache.has(path)) {
       try {
-        const entry = zip.file(path);
-        if (!entry) return;
+        const manager = managerRef.current!;
         const mime = inferMimeFromExtension(path);
         if (mime && mime.startsWith('image/')) {
-          const blob = await entry.async('blob');
+          const arr = (await manager.readFile(`/${path}`, 'binary')) as Uint8Array;
+          const blob = new Blob([arr.buffer], { type: mime });
           const dataUrl = await new Promise<string>((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result as string);
@@ -134,7 +158,7 @@ export function FileSystemProvider({ children }: { children: ReactNode }) {
           const content: LoadedContent = { kind: 'image', mime, data: dataUrl };
           setCache((prev) => new Map(prev).set(path, content));
         } else {
-          const text = await entry.async('string');
+          const text = (await manager.readFile(`/${path}`, 'utf8')) as string;
           const content: LoadedContent = { kind: 'text', mime: mime || 'text/plain', data: text };
           setCache((prev) => new Map(prev).set(path, content));
         }
@@ -148,7 +172,7 @@ export function FileSystemProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  }, [zip, openFiles, cache, toast]);
+  }, [openFiles, cache, toast]);
 
   const closeFile = useCallback((path: string) => {
     setOpenFiles((prev) => prev.filter((p) => p !== path));
@@ -185,6 +209,23 @@ export function FileSystemProvider({ children }: { children: ReactNode }) {
       return next;
     });
     setDirty((prev) => new Set(prev).add(path));
+  }, []);
+
+  // Watch container FS and rebuild tree automatically
+  useEffect(() => {
+    const manager = managerRef.current;
+    if (!manager) return;
+    const unsubscribe = manager.watchFs(async () => {
+      try {
+        const allPaths = await manager.listTreeAsPaths('/');
+        setRoot(buildTree(allPaths));
+      } catch (e) {
+        // ignore transient errors
+      }
+    });
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
   const isDirty = useCallback((path: string) => dirty.has(path), [dirty]);

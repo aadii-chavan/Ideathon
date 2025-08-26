@@ -15,6 +15,7 @@ export class WebContainerManager {
   private container: WebContainer | null = null;
   private bootPromise: Promise<WebContainer> | null = null;
   private devProcess: WebContainerProcess | null = null;
+  private fsUnsubscribe: (() => void) | null = null;
 
   static getInstance(): WebContainerManager {
     if (!WebContainerManager.instance) {
@@ -38,6 +39,92 @@ export class WebContainerManager {
   async mountFiles(tree: FileSystemTree): Promise<void> {
     const container = await this.boot();
     await container.mount(tree);
+  }
+
+  async readFile(path: string, encoding: 'utf8' | 'binary' = 'utf8'): Promise<string | Uint8Array> {
+    const container = await this.boot();
+    const data = await container.fs.readFile(path);
+    if (encoding === 'utf8') {
+      return new TextDecoder().decode(data);
+    }
+    return data;
+  }
+
+  async writeFile(path: string, data: string | Uint8Array): Promise<void> {
+    const container = await this.boot();
+    const toWrite = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+    await container.fs.writeFile(path, toWrite);
+  }
+
+  async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
+    const container = await this.boot();
+    await container.fs.mkdir(path, { recursive: options?.recursive ?? true });
+  }
+
+  async rm(path: string, options?: { recursive?: boolean }): Promise<void> {
+    const container = await this.boot();
+    await container.fs.rm(path, { recursive: options?.recursive ?? true });
+  }
+
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    const container = await this.boot();
+    await container.fs.rename(oldPath, newPath);
+  }
+
+  async listDir(path: string): Promise<{ name: string; isDirectory: boolean }[]> {
+    const container = await this.boot();
+    const entries = await container.fs.readdir(path, { withFileTypes: true } as any);
+    // When withFileTypes not supported, fallback to stat
+    if (Array.isArray(entries) && entries.length && typeof entries[0] === 'object' && 'isDirectory' in entries[0]) {
+      return (entries as any[]).map((e) => ({ name: e.name, isDirectory: e.isDirectory() }));
+    }
+    const names: string[] = Array.isArray(entries) ? (entries as any) : [];
+    const result: { name: string; isDirectory: boolean }[] = [];
+    for (const name of names) {
+      const stat = await (container.fs as any).stat(`${path === '/' ? '' : path}/${name}`);
+      result.push({ name, isDirectory: !!stat?.isDirectory?.() });
+    }
+    return result;
+  }
+
+  async listTreeAsPaths(start: string = '/'): Promise<string[]> {
+    const paths: string[] = [];
+    const walk = async (dir: string) => {
+      const items = await this.listDir(dir);
+      for (const item of items) {
+        const full = `${dir === '/' ? '' : dir}/${item.name}`;
+        if (item.isDirectory) {
+          await walk(full);
+        } else {
+          paths.push(full.replace(/^\//, ''));
+        }
+      }
+    };
+    await walk(start);
+    return paths;
+  }
+
+  async findPackageDir(): Promise<string> {
+    const paths = await this.listTreeAsPaths('/');
+    const pkgPaths = paths.filter((p) => p.endsWith('/package.json') || p === 'package.json');
+    if (pkgPaths.length === 0) return '/';
+    // Choose the shortest path (closest to root)
+    const chosen = pkgPaths.sort((a, b) => a.length - b.length)[0];
+    const dir = chosen.replace(/\/package\.json$/, '');
+    return dir === '' ? '/' : `/${dir}`;
+  }
+
+  watchFs(onChange: () => void): () => void {
+    if (!this.container) return () => {};
+    // @ts-expect-error watch is available at runtime
+    const unwatch = (this.container.fs as any).watch?.(() => {
+      onChange();
+    });
+    this.fsUnsubscribe = typeof unwatch === 'function' ? unwatch : null;
+    return () => {
+      try { this.fsUnsubscribe?.(); } catch (_) {}
+      this.fsUnsubscribe = null;
+    };
   }
 
   async installDependencies(options?: Pick<InstallAndRunOptions, 'installCommand' | 'onInstallOutput' | 'env' | 'cwd'>): Promise<number> {

@@ -83,7 +83,7 @@ export default function WebContainerRunner(props: Props) {
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
   const logToTerminal = useCallback((chunk: string) => {
-    terminalRef.current?.write(chunk.replaceAll('\n', '\r\n'));
+    terminalRef.current?.write(chunk.split('\n').join('\r\n'));
   }, []);
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function WebContainerRunner(props: Props) {
       // Auto-open a persistent shell on boot so terminal is always active
       if (!shellRef.current) {
         shellRef.current = await manager.openShell((chunk) => {
-          logToTerminal(chunk.replaceAll('\n', '\r\n'));
+          logToTerminal(chunk.split('\n').join('\r\n'));
         });
         terminalRef.current?.onData((data) => {
           manager.writeToProcess(shellRef.current!, data);
@@ -105,7 +105,7 @@ export default function WebContainerRunner(props: Props) {
       // Ensure shell is open
       if (!shellRef.current) {
         shellRef.current = await manager.openShell((chunk) => {
-          logToTerminal(chunk.replaceAll('\n', '\r\n'));
+          logToTerminal(chunk.split('\n').join('\r\n'));
         });
         terminalRef.current?.onData((data) => manager.writeToProcess(shellRef.current!, data));
         logToTerminal('Interactive shell opened.\r\n');
@@ -125,7 +125,7 @@ export default function WebContainerRunner(props: Props) {
       // Also ensure shell exists when expanding
       if (!isCollapsed && !shellRef.current) {
         shellRef.current = await manager.openShell((chunk) => {
-          logToTerminal(chunk.replaceAll('\n', '\r\n'));
+          logToTerminal(chunk.split('\n').join('\r\n'));
         });
         terminalRef.current?.onData((data) => manager.writeToProcess(shellRef.current!, data));
       }
@@ -175,6 +175,14 @@ export default function WebContainerRunner(props: Props) {
   const handleInstall = useCallback(async () => {
     setIsInstalling(true);
     logToTerminal('Running npm install...\r\n');
+    // Auto-detect working directory if not set
+    if (!projectCwdRef.current) {
+      try {
+        const detected = await manager.findPackageDir();
+        projectCwdRef.current = detected;
+        logToTerminal(`Detected package directory: ${detected}\r\n`);
+      } catch {}
+    }
     const code = await manager.installDependencies({
       installCommand: props.installCommand,
       onInstallOutput: logToTerminal,
@@ -188,12 +196,24 @@ export default function WebContainerRunner(props: Props) {
     setIsRunning(true);
     setAppUrl(null);
     logToTerminal('Starting dev server...\r\n');
+    // Auto-detect working directory if not set
+    if (!projectCwdRef.current) {
+      try {
+        const detected = await manager.findPackageDir();
+        projectCwdRef.current = detected;
+        logToTerminal(`Detected package directory: ${detected}\r\n`);
+      } catch {}
+    }
     await manager.startDevServer({
       devCommand: props.devCommand,
       onDevOutput: logToTerminal,
       onServerReady: (_port, url) => {
         setAppUrl(url);
         logToTerminal(`Server ready at ${url}\r\n`);
+        try {
+          const previewUrl = `/preview?url=${encodeURIComponent(url)}`;
+          window.open(previewUrl, '_blank');
+        } catch {}
       },
       cwd: projectCwdRef.current ?? undefined,
     });
@@ -236,7 +256,7 @@ export default function WebContainerRunner(props: Props) {
         <button onClick={async () => {
           if (!shellRef.current) {
             shellRef.current = await manager.openShell((chunk) => {
-              logToTerminal(chunk.replaceAll('\n', '\r\n'));
+              logToTerminal(chunk.split('\n').join('\r\n'));
             });
             terminalRef.current?.onData((data) => {
               manager.writeToProcess(shellRef.current!, data);
@@ -287,6 +307,21 @@ export default function WebContainerRunner(props: Props) {
         />
       )}
       <div style={{ marginTop: 8 }}>
+        {appUrl && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+            <button
+              onClick={() => {
+                try {
+                  const previewUrl = `/preview?url=${encodeURIComponent(appUrl)}`;
+                  window.open(previewUrl, '_blank');
+                } catch {}
+              }}
+              style={{ fontSize: 12 }}
+            >
+              Open Preview in New Window
+            </button>
+          </div>
+        )}
         {appUrl ? (
           <iframe
             src={appUrl}

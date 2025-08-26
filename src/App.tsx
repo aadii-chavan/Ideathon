@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
+import { Preview } from '@/pages/Preview';
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
 import { ImportProject } from '@/pages/ImportProject';
@@ -20,6 +21,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/preview" element={<Preview />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
         <Toaster />
@@ -38,6 +40,7 @@ function App() {
           <Route path="/devops" element={<DevOpsInsights />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/preview" element={<Preview />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
