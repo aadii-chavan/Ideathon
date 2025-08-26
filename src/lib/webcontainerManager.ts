@@ -137,14 +137,40 @@ export class WebContainerManager {
 
   async startDevServer(options?: InstallAndRunOptions): Promise<WebContainerProcess> {
     const container = await this.boot();
-    const devCmd = options?.devCommand ?? ['npm', 'run', 'dev'];
+    let devCmd = [...(options?.devCommand ?? ['npm', 'run', 'dev'])];
+
+    // Force port 8080 across common CLIs
+    const lower0 = (devCmd[0] || '').toLowerCase();
+    const isNpmRun = lower0 === 'npm' && (devCmd[1] || '').toLowerCase() === 'run';
+    const isPnpmRun = lower0 === 'pnpm' && (devCmd[1] || '').toLowerCase() === 'run';
+    const isYarnRun = lower0 === 'yarn' && (devCmd[1] || '').toLowerCase() === 'run';
+    const looksLikeVite = devCmd.join(' ').toLowerCase().includes('vite');
+    const alreadyHasPort = devCmd.some((a) => /^(--port|-(p))$/i.test(a)) || devCmd.some((a) => /--port=\d+/.test(a));
+
+    if (!alreadyHasPort) {
+      if (isNpmRun || isPnpmRun || isYarnRun) {
+        // Pass through to the underlying script: npm run dev -- --port 8080
+        devCmd = [...devCmd, '--', '--port', '8080'];
+      } else if (looksLikeVite || lower0 === 'vite') {
+        devCmd = [...devCmd, '--port', '8080'];
+      } else if (lower0 === 'next' || devCmd.join(' ').toLowerCase().includes('next')) {
+        devCmd = [...devCmd, '-p', '8080'];
+      } else if (lower0 === 'nuxt' || devCmd.join(' ').toLowerCase().includes('nuxt')) {
+        devCmd = [...devCmd, '-p', '8080'];
+      } else if (lower0 === 'react-scripts' || devCmd.join(' ').toLowerCase().includes('react-scripts')) {
+        // CRA respects PORT env; keep env below
+      } else if (lower0 === 'astro' || devCmd.join(' ').toLowerCase().includes('astro')) {
+        devCmd = [...devCmd, '--port', '8080'];
+      }
+    }
 
     // Forward server ready events
     const off = container.on('server-ready', (port, url) => {
       options?.onServerReady?.(port, url);
     });
 
-    this.devProcess = await container.spawn(devCmd[0], devCmd.slice(1), { env: options?.env, cwd: options?.cwd });
+    const env = { ...(options?.env ?? {}), PORT: '8080', VITE_PORT: '8080' } as Record<string, string>;
+    this.devProcess = await container.spawn(devCmd[0], devCmd.slice(1), { env, cwd: options?.cwd });
 
     // Stream dev output
     this.pipeProcessOutput(this.devProcess, options?.onDevOutput).finally(() => {

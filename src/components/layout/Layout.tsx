@@ -9,6 +9,7 @@ import { FileSystemProvider } from './FileSystem';
 import { FileViewer } from './FileViewer';
 import { useFileSystem } from './FileSystem';
 import WebContainerRunner from '@/components/WebContainerRunner';
+import { ChatPanel } from './ChatPanel';
 
 interface LayoutProps {
   children: ReactNode;
@@ -35,27 +36,40 @@ export function Layout({ children }: LayoutProps) {
       <FileSystemProvider>
         <div className="h-[calc(100vh-2rem)] flex flex-col">
           <div className="flex flex-1 min-h-0">
-            <ActivityBar />
+            {/* Left: Chat */}
             <ResizablePanelGroup direction="horizontal">
-              <ResizablePanel minSize={15} defaultSize={18}>
-                <Explorer />
+              <ResizablePanel minSize={20} defaultSize={28}>
+                <ChatPanel />
               </ResizablePanel>
               <ResizableHandle withHandle />
-              <ResizablePanel minSize={40} defaultSize={82}>
-                <div className="flex flex-col h-full min-w-0 editor-surface">
-                  <EditorTabs />
-                  <div className="flex-1 overflow-hidden">
-                    <EditorContent>
-                      {children}
-                    </EditorContent>
-                  </div>
+
+              {/* Right: IDE area */}
+              <ResizablePanel minSize={45} defaultSize={72}>
+                <div className="h-full flex">
+                  <ActivityBar />
+                  <ResizablePanelGroup direction="horizontal">
+                    <ResizablePanel minSize={15} defaultSize={18}>
+                      <Explorer />
+                    </ResizablePanel>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel minSize={40} defaultSize={82}>
+                      <div className="flex flex-col h-full min-w-0 editor-surface">
+                        <EditorTabs />
+                        <div className="flex-1 overflow-hidden">
+                          <EditorContent>
+                            {children}
+                          </EditorContent>
+                        </div>
+                        {/* Terminal under code */}
+                        <div className="border-t border-border">
+                          <WebContainerRunner />
+                        </div>
+                      </div>
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
-          </div>
-          {/* Global persistent WebContainer terminal */}
-          <div className="border-t border-border">
-            <WebContainerRunner />
           </div>
           <StatusBar />
         </div>

@@ -8,6 +8,7 @@ import {
   TrendingUp, 
   FileText, 
   Settings,
+  MonitorSmartphone,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -20,6 +21,11 @@ const sidebarItems = [
     href: '/', 
     icon: LayoutDashboard,
     exact: true
+  },
+  {
+    name: 'Preview',
+    href: '/preview',
+    icon: MonitorSmartphone,
   },
   { 
     name: 'Import Project', 

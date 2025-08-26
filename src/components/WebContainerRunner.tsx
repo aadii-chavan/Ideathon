@@ -4,6 +4,7 @@ import { type FileSystemTree } from '@webcontainer/api';
 import { WebContainerManager } from '../lib/webcontainerManager';
 import Terminal, { type TerminalHandle } from './Terminal';
 import { terminalBus } from '../lib/terminalBus';
+import { previewState } from '@/lib/previewState';
 
 async function zipToFileTree(file: File): Promise<{ tree: FileSystemTree; rootDir: string | null; packageDir: string | null }> {
   const zip = await JSZip.loadAsync(file);
@@ -214,6 +215,7 @@ export default function WebContainerRunner(props: Props) {
       onServerReady: (_port, url) => {
         setAppUrl(url);
         logToTerminal(`Server ready at ${url}\r\n`);
+        try { previewState.setUrl(url); } catch {}
       },
       cwd: projectCwdRef.current ?? undefined,
     });
@@ -307,26 +309,7 @@ export default function WebContainerRunner(props: Props) {
           style={{ position: 'fixed', inset: 0, cursor: 'ns-resize' }}
         />
       )}
-      <div style={{ marginTop: 8 }}>
-        {appUrl ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>Dev server ready.</span>
-            <button
-              onClick={() => {
-                try {
-                  const previewUrl = `/preview?url=${encodeURIComponent(appUrl)}`;
-                  window.open(previewUrl, '_blank');
-                } catch {}
-              }}
-              style={{ fontSize: 12 }}
-            >
-              Open Preview
-            </button>
-          </div>
-        ) : (
-          <div style={{ color: '#666' }}>Run the dev server to enable preview.</div>
-        )}
-      </div>
+      {/* No inline preview here; use global Preview button in the status bar */}
     </div>
   );
 }

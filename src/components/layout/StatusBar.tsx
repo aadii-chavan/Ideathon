@@ -1,8 +1,11 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { GitBranch, Wifi, Circle, TerminalSquare } from 'lucide-react';
 import { terminalBus } from '@/lib/terminalBus';
+import { previewState } from '@/lib/previewState';
 
 export const StatusBar = memo(function StatusBar() {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(previewState.getUrl());
+  useEffect(() => previewState.subscribe(setPreviewUrl), []);
   return (
     <div className="h-6 text-[11px] px-3 border-t border-border bg-muted/40 flex items-center justify-between text-muted-foreground">
       <div className="flex items-center gap-4">
@@ -14,6 +17,15 @@ export const StatusBar = memo(function StatusBar() {
         <span>UTF-8</span>
         <span>LF</span>
         <span>TypeScript React</span>
+        {previewUrl && (
+          <button
+            onClick={() => window.open(`/preview?url=${encodeURIComponent(previewUrl)}`, '_blank')}
+            className="ml-2 inline-flex items-center gap-1 rounded border border-border px-2 py-[2px] text-xs hover:bg-muted/60"
+            title="Open Preview"
+          >
+            Preview
+          </button>
+        )}
         <button
           onClick={() => terminalBus.emitToggle()}
           className="ml-2 inline-flex items-center gap-1 rounded border border-border px-2 py-[2px] text-xs hover:bg-muted/60"

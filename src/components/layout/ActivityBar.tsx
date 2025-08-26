@@ -1,10 +1,11 @@
 import { memo } from 'react';
-import { LayoutDashboard, Upload, Shield, Bug, TrendingUp, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, Upload, Shield, Bug, TrendingUp, FileText, Settings, MonitorSmartphone } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useFileSystem } from './FileSystem';
 
 const items = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/preview', icon: MonitorSmartphone, label: 'Preview' },
   { to: '/import', icon: Upload, label: 'Import' },
   { to: '/security', icon: Shield, label: 'Security' },
   { to: '/bugs', icon: Bug, label: 'Bugs' },

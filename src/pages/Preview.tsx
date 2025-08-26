@@ -1,11 +1,14 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { previewState } from '@/lib/previewState';
 
 export function Preview() {
+  const [liveUrl, setLiveUrl] = useState<string | null>(previewState.getUrl());
+  useEffect(() => previewState.subscribe(setLiveUrl), []);
   const src = useMemo(() => {
     const url = new URL(window.location.href);
     const target = url.searchParams.get('url');
-    return target ?? '';
-  }, []);
+    return target ?? liveUrl ?? '';
+  }, [liveUrl]);
 
   return (
     <div style={{ padding: 12 }}>
