@@ -4,6 +4,7 @@ export type InstallAndRunOptions = {
   installCommand?: string[];
   devCommand?: string[];
   env?: Record<string, string>;
+  cwd?: string;
   onServerReady?: (port: number, url: string) => void;
   onInstallOutput?: (chunk: string) => void;
   onDevOutput?: (chunk: string) => void;
@@ -12,6 +13,7 @@ export type InstallAndRunOptions = {
 export class WebContainerManager {
   private static instance: WebContainerManager | null = null;
   private container: WebContainer | null = null;
+  private bootPromise: Promise<WebContainer> | null = null;
   private devProcess: WebContainerProcess | null = null;
 
   static getInstance(): WebContainerManager {
@@ -22,11 +24,15 @@ export class WebContainerManager {
   }
 
   async boot(): Promise<WebContainer> {
-    if (this.container) {
-      return this.container;
-    }
-    this.container = await WebContainer.boot();
-    return this.container;
+    if (this.container) return this.container;
+    if (this.bootPromise) return this.bootPromise;
+    this.bootPromise = WebContainer.boot().then((wc) => {
+      this.container = wc;
+      return wc;
+    }).finally(() => {
+      // Keep bootPromise for concurrent callers but allow future boots only if container cleared
+    });
+    return this.bootPromise;
   }
 
   async mountFiles(tree: FileSystemTree): Promise<void> {
@@ -34,10 +40,10 @@ export class WebContainerManager {
     await container.mount(tree);
   }
 
-  async installDependencies(options?: Pick<InstallAndRunOptions, 'installCommand' | 'onInstallOutput' | 'env'>): Promise<number> {
+  async installDependencies(options?: Pick<InstallAndRunOptions, 'installCommand' | 'onInstallOutput' | 'env' | 'cwd'>): Promise<number> {
     const container = await this.boot();
     const installCmd = options?.installCommand ?? ['npm', 'install'];
-    const process = await container.spawn(installCmd[0], installCmd.slice(1), { env: options?.env });
+    const process = await container.spawn(installCmd[0], installCmd.slice(1), { env: options?.env, cwd: options?.cwd });
     const exitCode = await this.pipeProcessOutput(process, options?.onInstallOutput);
     return exitCode;
   }
@@ -51,7 +57,7 @@ export class WebContainerManager {
       options?.onServerReady?.(port, url);
     });
 
-    this.devProcess = await container.spawn(devCmd[0], devCmd.slice(1), { env: options?.env });
+    this.devProcess = await container.spawn(devCmd[0], devCmd.slice(1), { env: options?.env, cwd: options?.cwd });
 
     // Stream dev output
     this.pipeProcessOutput(this.devProcess, options?.onDevOutput).finally(() => {

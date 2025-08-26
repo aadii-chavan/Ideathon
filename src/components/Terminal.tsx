@@ -1,7 +1,7 @@
 import React, { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
-import { Terminal as XTerm } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
+import { Terminal as XTerm } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
 
 export type TerminalHandle = {
 	write: (data: string) => void;
@@ -35,15 +35,30 @@ const Terminal = forwardRef<TerminalHandle, Props>(function Terminal(props, ref)
 		termRef.current = term;
 		fitAddonRef.current = fitAddon;
 
+		const safeFit = () => {
+			const container = containerRef.current;
+			if (!container || !container.isConnected) return;
+			if (container.clientWidth === 0 || container.clientHeight === 0) return;
+			const t = termRef.current;
+			const f = fitAddonRef.current;
+			if (!t || !f) return;
+			try {
+				const dims = f.proposeDimensions();
+				if (dims && dims.cols > 0 && dims.rows > 0) {
+					t.resize(dims.cols, dims.rows);
+				}
+			} catch (_) {}
+		};
+
 		if (containerRef.current) {
 			term.open(containerRef.current);
-			fitAddon.fit();
-			setIsReady(true);
+			requestAnimationFrame(() => {
+				safeFit();
+				setIsReady(true);
+			});
 		}
 
-		const onResize = () => {
-			fitAddon.fit();
-		};
+		const onResize = () => safeFit();
 		window.addEventListener('resize', onResize);
 
 		return () => {
@@ -59,7 +74,19 @@ const Terminal = forwardRef<TerminalHandle, Props>(function Terminal(props, ref)
 			termRef.current.onData(cb);
 		},
 		clear: () => termRef.current?.clear(),
-		fit: () => fitAddonRef.current?.fit(),
+		fit: () => {
+			const container = containerRef.current;
+			const t = termRef.current;
+			const f = fitAddonRef.current;
+			if (!container || !container.isConnected || !t || !f) return;
+			if (container.clientWidth === 0 || container.clientHeight === 0) return;
+			try {
+				const dims = f.proposeDimensions();
+				if (dims && dims.cols > 0 && dims.rows > 0) {
+					t.resize(dims.cols, dims.rows);
+				}
+			} catch (_) {}
+		},
 	}), []);
 
 	return (
