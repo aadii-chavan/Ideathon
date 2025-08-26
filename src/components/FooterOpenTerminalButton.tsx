@@ -3,8 +3,8 @@ import { terminalBus } from '../lib/terminalBus';
 
 export default function FooterOpenTerminalButton() {
   return (
-    <button onClick={() => terminalBus.emitOpen()} title="Open Terminal">
-      Open Terminal
+    <button onClick={() => terminalBus.emitToggle()} title="Toggle Terminal">
+      Toggle Terminal
     </button>
   );
 }

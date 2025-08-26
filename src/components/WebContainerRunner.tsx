@@ -5,12 +5,13 @@ import { WebContainerManager } from '../lib/webcontainerManager';
 import Terminal, { type TerminalHandle } from './Terminal';
 import { terminalBus } from '../lib/terminalBus';
 
-async function zipToFileTree(file: File): Promise<{ tree: FileSystemTree; rootDir: string | null }> {
+async function zipToFileTree(file: File): Promise<{ tree: FileSystemTree; rootDir: string | null; packageDir: string | null }> {
   const zip = await JSZip.loadAsync(file);
   const tree: FileSystemTree = {};
 
   const folders = new Set<string>();
   let topLevel: Set<string> = new Set();
+  let packageJsonDirs: Set<string> = new Set();
 
   await Promise.all(
     Object.keys(zip.files).map(async (path) => {
@@ -25,6 +26,10 @@ async function zipToFileTree(file: File): Promise<{ tree: FileSystemTree; rootDi
       const parts = path.split('/');
       const fileName = parts.pop() as string;
       if (parts.length === 1) topLevel.add(parts[0]);
+      if (fileName === 'package.json') {
+        const dir = parts.join('/');
+        packageJsonDirs.add(dir); // '' indicates root
+      }
       let current: any = tree;
       for (const part of parts) {
         if (!current[part]) current[part] = { directory: {} };
@@ -46,8 +51,14 @@ async function zipToFileTree(file: File): Promise<{ tree: FileSystemTree; rootDi
 
   // Determine rootDir if archive contains a single top-level folder
   const rootDir = topLevel.size === 1 ? Array.from(topLevel)[0] : null;
+  // Prefer directory that actually contains package.json
+  let packageDir: string | null = null;
+  if (packageJsonDirs.size > 0) {
+    // pick the shortest path (closest to root)
+    packageDir = Array.from(packageJsonDirs).sort((a, b) => a.length - b.length)[0];
+  }
 
-  return { tree, rootDir };
+  return { tree, rootDir, packageDir };
 }
 
 type Props = {
@@ -64,6 +75,7 @@ export default function WebContainerRunner(props: Props) {
   const [isRunning, setIsRunning] = useState(false);
   const [termHeight, setTermHeight] = useState<number>(260);
   const [isResizing, setIsResizing] = useState<boolean>(false);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const terminalRef = useRef<TerminalHandle | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const shellRef = useRef<any | null>(null);
@@ -88,7 +100,7 @@ export default function WebContainerRunner(props: Props) {
       }
     })();
     // Listen for external open-terminal events
-    const off = terminalBus.on('open-terminal', async () => {
+    const offOpen = terminalBus.on('open-terminal', async () => {
       // Ensure shell is open
       if (!shellRef.current) {
         shellRef.current = await manager.openShell((chunk) => {
@@ -102,8 +114,24 @@ export default function WebContainerRunner(props: Props) {
       // Focus the terminal for immediate typing
       setTimeout(() => terminalRef.current?.fit(), 50);
     });
+    const offToggle = terminalBus.on('toggle-terminal', async () => {
+      if (isCollapsed) {
+        setIsCollapsed(false);
+        setTimeout(() => terminalRef.current?.fit(), 100);
+      } else {
+        setIsCollapsed(true);
+      }
+      // Also ensure shell exists when expanding
+      if (!isCollapsed && !shellRef.current) {
+        shellRef.current = await manager.openShell((chunk) => {
+          logToTerminal(chunk.replaceAll('\n', '\r\n'));
+        });
+        terminalRef.current?.onData((data) => manager.writeToProcess(shellRef.current!, data));
+      }
+    });
     return () => {
-      off();
+      offOpen();
+      offToggle();
     };
   }, [manager, logToTerminal]);
 
@@ -117,14 +145,19 @@ export default function WebContainerRunner(props: Props) {
     try {
       const parsed = await zipToFileTree(file);
       tree = parsed.tree;
-      projectCwdRef.current = parsed.rootDir ? `/${parsed.rootDir}` : '/';
+      const cwdPath = parsed.packageDir !== null ? parsed.packageDir : (parsed.rootDir ?? '');
+      projectCwdRef.current = `/${cwdPath}`.replace(/\/+/g, '/');
     } catch (e) {
       logToTerminal('Failed to parse ZIP.\r\n');
       return;
     }
     logToTerminal('Mounting files...\r\n');
     await manager.mountFiles(tree);
+    if (!projectCwdRef.current || projectCwdRef.current === '//') projectCwdRef.current = '/';
     logToTerminal(`Files mounted. Working dir: ${projectCwdRef.current}\r\n`);
+    if (projectCwdRef.current === '/') {
+      logToTerminal('Note: package.json not found in a subfolder; using root.\r\n');
+    }
 
     // Auto open persistent shell if not opened yet
     if (!shellRef.current) {
@@ -186,8 +219,14 @@ export default function WebContainerRunner(props: Props) {
           }
         }}>Open Shell</button>
       </div>
-      <div id="webcontainer-terminal" style={{ position: 'relative', width: '100%', border: '1px solid #333', borderRadius: 4, background: '#000', marginBottom: 8 }}>
-        <Terminal ref={terminalRef} heightPx={termHeight} />
+      <div id="webcontainer-terminal" style={{ position: 'relative', width: '100%', border: '1px solid var(--border, #333)', borderRadius: 6, background: '#0b0b0b', marginBottom: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: '#111', borderBottom: '1px solid var(--border, #333)' }}>
+          <span style={{ fontSize: 12, color: '#bbb' }}>Terminal</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setIsCollapsed((c) => !c)} style={{ fontSize: 12 }}> {isCollapsed ? 'Expand' : 'Collapse'} </button>
+          </div>
+        </div>
+        {!isCollapsed && <Terminal ref={terminalRef} heightPx={termHeight} />}
         <div
           onMouseDown={() => setIsResizing(true)}
           style={{
@@ -195,9 +234,9 @@ export default function WebContainerRunner(props: Props) {
             left: 0,
             right: 0,
             bottom: 0,
-            height: 6,
+            height: 8,
             cursor: 'ns-resize',
-            background: 'rgba(255,255,255,0.06)'
+            background: 'linear-gradient(to bottom, rgba(255,255,255,0.04), rgba(255,255,255,0.08))'
           }}
         />
       </div>
@@ -211,6 +250,7 @@ export default function WebContainerRunner(props: Props) {
               const newHeight = Math.max(160, Math.min(800, e.clientY - rect.top));
               setTermHeight(newHeight);
               terminalRef.current?.fit();
+              try { localStorage.setItem('wc_term_height', String(newHeight)); } catch {}
             }
           }}
           onMouseUp={() => setIsResizing(false)}

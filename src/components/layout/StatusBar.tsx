@@ -15,12 +15,12 @@ export const StatusBar = memo(function StatusBar() {
         <span>LF</span>
         <span>TypeScript React</span>
         <button
-          onClick={() => terminalBus.emitOpen()}
+          onClick={() => terminalBus.emitToggle()}
           className="ml-2 inline-flex items-center gap-1 rounded border border-border px-2 py-[2px] text-xs hover:bg-muted/60"
           title="Open Terminal"
         >
           <TerminalSquare className="w-3 h-3" />
-          Open Terminal
+          Toggle Terminal
         </button>
       </div>
     </div>

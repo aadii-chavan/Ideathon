@@ -1,4 +1,4 @@
-type TerminalEvent = 'open-terminal';
+type TerminalEvent = 'open-terminal' | 'toggle-terminal';
 
 class TerminalBus {
   private target = new EventTarget();
@@ -11,6 +11,10 @@ class TerminalBus {
 
   emitOpen(): void {
     this.target.dispatchEvent(new Event('open-terminal'));
+  }
+
+  emitToggle(): void {
+    this.target.dispatchEvent(new Event('toggle-terminal'));
   }
 }
 
