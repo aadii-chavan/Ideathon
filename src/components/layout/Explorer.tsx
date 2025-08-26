@@ -1,6 +1,8 @@
 import { memo, useMemo, useRef, useState } from 'react';
-import { FolderTree, FolderOpen, Folder, FileCode2, UploadCloud, Package } from 'lucide-react';
+import { FolderTree, FolderOpen, Folder, FileCode2, UploadCloud, Package, Github } from 'lucide-react';
 import { useFileSystem, type FileNode } from './FileSystem';
+import { fetchGithubZipAsFile } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
 
 interface ExplorerProps {
   title?: string;
@@ -44,6 +46,8 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
 export const Explorer = memo(function Explorer({ title = 'EXPLORER' }: ExplorerProps) {
   const { root, loadZip } = useFileSystem();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [ghUrl, setGhUrl] = useState<string>('');
+  const [ghBusy, setGhBusy] = useState<boolean>(false);
 
   const topLevel = useMemo(() => root?.children ?? [], [root]);
 
@@ -89,6 +93,39 @@ export const Explorer = memo(function Explorer({ title = 'EXPLORER' }: ExplorerP
                 <li>• Drag & drop ZIP here</li>
                 <li>• Click upload icon above</li>
               </ul>
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Github className="w-3 h-3" />
+                  <span>Import from GitHub</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input 
+                    placeholder="https://github.com/owner/repo or .../tree/branch"
+                    value={ghUrl}
+                    onChange={(e) => setGhUrl(e.target.value)}
+                  />
+                  <button
+                    className="px-2 py-1 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50"
+                    disabled={ghBusy || !ghUrl.trim()}
+                    onClick={async () => {
+                      if (!ghUrl.trim()) return;
+                      try {
+                        setGhBusy(true);
+                        const file = await fetchGithubZipAsFile(ghUrl.trim());
+                        await loadZip(file);
+                      } catch (e) {
+                        // Best-effort; errors are surfaced in Import page via toasts, here we silently fail
+                        // or could add a minimal alert if needed
+                        console.error(e);
+                      } finally {
+                        setGhBusy(false);
+                      }
+                    }}
+                  >
+                    {ghBusy ? 'Importing...' : 'Import'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : (

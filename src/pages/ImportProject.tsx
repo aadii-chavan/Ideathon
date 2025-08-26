@@ -1,11 +1,13 @@
 import { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, File, Folder, Check, X, AlertCircle, FolderOpen, FileCode2, ExternalLink } from 'lucide-react';
+import { Upload, File, Folder, Check, X, AlertCircle, FolderOpen, FileCode2, ExternalLink, Github } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useFileSystem, type FileNode } from '@/components/layout/FileSystem';
+import { Input } from '@/components/ui/input';
+import { fetchGithubZipAsFile } from '@/lib/utils';
 
 interface ProjectFile {
   name: string;
@@ -30,6 +32,8 @@ export function ImportProject() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [githubUrl, setGithubUrl] = useState<string>('');
+  const [isGithubLoading, setIsGithubLoading] = useState<boolean>(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -101,6 +105,42 @@ export function ImportProject() {
       setUploadStatus('error');
     }
   };
+
+  const handleGithubImport = useCallback(async () => {
+    if (!githubUrl.trim()) return;
+    try {
+      setIsGithubLoading(true);
+      setUploadStatus('uploading');
+      setUploadProgress(0);
+      setUploadedFileName('Downloading from GitHub...');
+      const file = await fetchGithubZipAsFile(githubUrl.trim());
+      setUploadedFileName(file.name);
+      // Simulate progress while fetching/mounting
+      const interval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(interval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 100);
+      await loadZip(file);
+      clearInterval(interval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setUploadStatus('processing');
+        setTimeout(() => {
+          setUploadStatus('complete');
+        }, 1500);
+      }, 500);
+    } catch (e) {
+      console.error(e);
+      setUploadStatus('error');
+    } finally {
+      setIsGithubLoading(false);
+    }
+  }, [githubUrl, loadZip]);
 
   const renderFileTree = (node: FileNode, depth = 0) => {
     return (
@@ -305,6 +345,26 @@ export function ImportProject() {
                     </Button>
                   </motion.div>
                 )}
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Github className="w-4 h-4" />
+                  <span className="text-sm text-muted-foreground">Or import from GitHub</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="https://github.com/owner/repo or .../tree/branch"
+                    value={githubUrl}
+                    onChange={(e) => setGithubUrl(e.target.value)}
+                  />
+                  <Button onClick={handleGithubImport} disabled={isGithubLoading || !githubUrl.trim()}>
+                    {isGithubLoading ? 'Importing...' : 'Import'}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Public repos only. For private repos, ensure CORS-allowed proxy or add token flow.
+                </p>
               </div>
             </CardContent>
           </Card>

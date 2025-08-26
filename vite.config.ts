@@ -5,6 +5,15 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react()],
   server: {
+    proxy: {
+      // Proxy GitHub archive downloads to avoid CORS during local dev
+      '/gh/': {
+        target: 'https://codeload.github.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/gh\//, '/'),
+        secure: true,
+      },
+    },
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
